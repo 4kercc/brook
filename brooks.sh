@@ -150,6 +150,19 @@ Download_brook(){
     mkdir -p "${file}"
     cd "${file}" || exit 1
 
+    # 1. 优先检查当前执行脚本同级目录下的 bin 目录是否有本地二进制
+    local script_dir
+    script_dir=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+    if [[ -f "${script_dir}/bin/${brook_arch}" ]]; then
+        echo -e "${Info} 发现本地内置依赖 [${script_dir}/bin/${brook_arch}]，正在复制..."
+        cp -f "${script_dir}/bin/${brook_arch}" "${file}/brook"
+        chmod +x "${file}/brook"
+        if [[ -x "${brook_file}" ]]; then
+            echo -e "${Info} 本地依赖载入成功！"
+            return 0
+        fi
+    fi
+
     local ver="$1"
     if [[ -z "${ver}" ]]; then
         echo -e "${Info} 正在获取 Brook 官方最新版本..."
@@ -157,23 +170,25 @@ Download_brook(){
     fi
 
     echo -e "${Info} 开始下载 Brook [${ver}] (${brook_arch})..."
-    local download_url="https://github.com/txthinking/brook/releases/download/${ver}/${brook_arch}"
-    local download_url_mirror="https://ghproxy.net/https://github.com/txthinking/brook/releases/download/${ver}/${brook_arch}"
+    local mirrors=(
+        "https://github.com/txthinking/brook/releases/download/${ver}/${brook_arch}"
+        "https://ghproxy.net/https://github.com/txthinking/brook/releases/download/${ver}/${brook_arch}"
+        "https://mirror.ghproxy.com/https://github.com/txthinking/brook/releases/download/${ver}/${brook_arch}"
+        "https://gh.ddlc.top/https://github.com/txthinking/brook/releases/download/${ver}/${brook_arch}"
+    )
 
-    if ! curl -fsSL --connect-timeout 10 -o brook "${download_url}"; then
-        echo -e "${Tip} 官方直连下载失败，尝试使用加速镜像下载..."
-        if ! curl -fsSL --connect-timeout 15 -o brook "${download_url_mirror}"; then
-            echo -e "${Error} Brook 下载失败，请检查网络或 GitHub 连通性 !"
-            exit 1
+    for url in "${mirrors[@]}"; do
+        if curl -fsSL --connect-timeout 8 --max-time 30 -o brook "${url}" 2>/dev/null; then
+            chmod +x brook
+            if [[ -x "${brook_file}" ]]; then
+                echo -e "${Info} Brook [${ver}] 下载并安装完成！"
+                return 0
+            fi
         fi
-    fi
+    done
 
-    chmod +x brook
-    if [[ ! -x "${brook_file}" ]]; then
-        echo -e "${Error} Brook 可执行文件异常 !"
-        exit 1
-    fi
-    echo -e "${Info} Brook [${ver}] 下载并安装完成！"
+    echo -e "${Error} Brook 下载失败，请检查网络或 GitHub 连通性 !"
+    exit 1
 }
 
 # 生成多规则运行脚本与 Systemd 服务
